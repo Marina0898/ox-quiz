@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>투운사 오답노트 OX 퀴즈</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="topbar-title">투운사 오답노트 OX</span>
+  </header>
+
+  <main id="app">
+    <!-- 홈 화면 -->
+    <section id="view-home" class="view">
+      <div id="resume-section" hidden>
+        <h2 class="resume-heading">이어서 풀기</h2>
+        <div id="resume-list" class="resume-list"></div>
+      </div>
+
+      <h1>어떤 세트를 풀까요?</h1>
+      <div class="card-list" id="home-subject-list"></div>
+
+      <button id="btn-mock-exam" class="card card-mock">
+        <span class="card-title">📝 투운사 모의고사</span>
+        <span class="card-sub">5지선다 · 오답·저장 문제 반영</span>
+      </button>
+    </section>
+
+    <!-- 문제 화면 (OX) -->
+    <section id="view-quiz" class="view" hidden>
+      <div class="quiz-header-row">
+        <button id="btn-back-quiz" class="back-btn" aria-label="홈으로" type="button">← 홈</button>
+        <div class="quiz-progress">
+          <div class="quiz-progress-bar"><div id="progress-fill" class="quiz-progress-fill"></div></div>
+          <span id="progress-label" class="quiz-progress-label"></span>
+        </div>
+      </div>
+
+      <div class="quiz-topic-row">
+        <div class="topic-badge" id="quiz-topic"></div>
+        <button id="btn-bookmark-toggle" class="bookmark-btn" aria-label="문제 저장" type="button">☆</button>
+      </div>
+      <p id="quiz-statement" class="statement"></p>
+
+      <div class="ox-buttons" id="ox-buttons">
+        <button class="ox-btn ox-o" data-value="true">O</button>
+        <button class="ox-btn ox-x" data-value="false">X</button>
+      </div>
+
+      <div id="feedback" class="feedback" hidden>
+        <div id="feedback-banner" class="feedback-banner"></div>
+        <p id="feedback-explanation" class="feedback-explanation"></p>
+        <button id="btn-next" class="btn-primary">다음</button>
+      </div>
+    </section>
+
+    <!-- 모의고사 화면 (5지선다) -->
+    <section id="view-mock" class="view" hidden>
+      <div class="quiz-header-row">
+        <button id="btn-back-mock" class="back-btn" aria-label="홈으로" type="button">← 홈</button>
+        <div class="quiz-progress">
+          <div class="quiz-progress-bar"><div id="mock-progress-fill" class="quiz-progress-fill"></div></div>
+          <span id="mock-progress-label" class="quiz-progress-label"></span>
+        </div>
+      </div>
+
+      <div class="quiz-topic-row">
+        <div class="topic-badge" id="mock-topic"></div>
+        <button id="btn-mock-bookmark-toggle" class="bookmark-btn" aria-label="문제 저장" type="button">☆</button>
+      </div>
+      <p class="mock-stem" id="mock-stem"></p>
+      <div class="mcq-choices" id="mcq-choices"></div>
+
+      <div id="mock-feedback" class="feedback" hidden>
+        <div id="mock-feedback-banner" class="feedback-banner"></div>
+        <p id="mock-feedback-explanation" class="feedback-explanation"></p>
+        <button id="btn-mock-next" class="btn-primary">다음</button>
+      </div>
+    </section>
+
+    <!-- 결과 화면 -->
+    <section id="view-result" class="view" hidden>
+      <h1>결과</h1>
+      <div class="result-score" id="result-score"></div>
+      <div id="result-subject-breakdown" class="result-breakdown" hidden></div>
+      <h2 class="result-subheading" id="result-wrong-heading" hidden>틀린 개념</h2>
+      <div id="result-wrong-topics" class="result-wrong-topics"></div>
+      <div class="result-actions">
+        <button id="btn-retry-from-result" class="btn-primary" hidden>오답만 재도전</button>
+        <button id="btn-home" class="btn-secondary">홈으로</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
