@@ -3,6 +3,8 @@
 
   const WRONG_KEY = "oxquiz-wrong";
   const BOOKMARK_KEY = "oxquiz-bookmarks";
+  const MOCK_WRONG_KEY = "oxquiz-mock-wrong";
+  const MOCK_BOOKMARK_KEY = "oxquiz-mock-bookmarks";
   const SESSIONS_KEY = "oxquiz-sessions"; // { [setKey]: session }
   const SUBJECT_LABELS = {
     1: "1과목 · 금융상품 및 세제",
@@ -50,6 +52,9 @@
   ];
 
   const byId = Object.fromEntries(QUESTIONS.map((q) => [q.id, q]));
+  const byIdMock = Object.fromEntries(MOCK_QUESTIONS.map((q) => [q.id, q]));
+  const ALL_QUESTIONS = QUESTIONS.concat(MOCK_QUESTIONS);
+  const byIdAll = Object.fromEntries(ALL_QUESTIONS.map((q) => [q.id, q]));
 
   const views = {
     home: document.getElementById("view-home"),
@@ -59,8 +64,10 @@
   };
 
   // session shapes:
-  //   ox:  { key, label, mode: 'ox',  queueIds: [ids], index, correct, wrong: [ids] }
+  //   ox:  { key, label, mode: 'ox', pool: 'main'|'mock'|'all', queueIds: [ids], index, correct, wrong: [ids] }
   //   mcq: { key, label, mode: 'mcq', items: [{ qid, choices: [str x5], correctIndex }], index, correct, wrong: [ids] }
+  // pool decides which byId map + wrong/bookmark storage a queueIds-based ('ox') session uses.
+  // 'all' (개념별 모아보기처럼 두 풀이 섞인 세션)은 문항마다 원래 출처의 저장소에 기록한다.
   let session = null;
 
   function showView(name) {
@@ -83,33 +90,46 @@
     localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids))));
   }
 
-  function getWrongIds() { return readIds(WRONG_KEY); }
-  function setWrongIds(ids) { writeIds(WRONG_KEY, ids); }
+  // 문항 id가 어느 풀 소속인지에 따라 오답/저장 기록을 쓸 storage key를 고른다.
+  function wrongKeyFor(id) { return byId[id] ? WRONG_KEY : MOCK_WRONG_KEY; }
+  function bookmarkKeyFor(id) { return byId[id] ? BOOKMARK_KEY : MOCK_BOOKMARK_KEY; }
+
+  function getWrongIds(key) { return readIds(key || WRONG_KEY); }
+  function setWrongIds(ids, key) { writeIds(key || WRONG_KEY, ids); }
   function markWrong(id) {
-    const ids = getWrongIds();
+    const key = wrongKeyFor(id);
+    const ids = getWrongIds(key);
     if (!ids.includes(id)) ids.push(id);
-    setWrongIds(ids);
+    setWrongIds(ids, key);
   }
   function markCorrect(id) {
-    setWrongIds(getWrongIds().filter((x) => x !== id));
+    const key = wrongKeyFor(id);
+    setWrongIds(getWrongIds(key).filter((x) => x !== id), key);
   }
 
-  function getBookmarks() { return readIds(BOOKMARK_KEY); }
-  function setBookmarks(ids) { writeIds(BOOKMARK_KEY, ids); }
-  function isBookmarked(id) { return getBookmarks().includes(id); }
+  function getBookmarks(key) { return readIds(key || BOOKMARK_KEY); }
+  function setBookmarks(ids, key) { writeIds(key || BOOKMARK_KEY, ids); }
+  function isBookmarked(id) { return getBookmarks(bookmarkKeyFor(id)).includes(id); }
   function toggleBookmark(id) {
-    const ids = getBookmarks();
+    const key = bookmarkKeyFor(id);
+    const ids = getBookmarks(key);
     const idx = ids.indexOf(id);
     if (idx === -1) ids.push(id); else ids.splice(idx, 1);
-    setBookmarks(ids);
+    setBookmarks(ids, key);
     return ids.includes(id);
   }
 
   function subjectWrongIds(subject) {
-    return getWrongIds().filter((id) => byId[id] && byId[id].subject === subject);
+    return getWrongIds(WRONG_KEY).filter((id) => byId[id] && byId[id].subject === subject);
   }
   function subjectBookmarkIds(subject) {
-    return getBookmarks().filter((id) => byId[id] && byId[id].subject === subject);
+    return getBookmarks(BOOKMARK_KEY).filter((id) => byId[id] && byId[id].subject === subject);
+  }
+  function mockWrongIds() {
+    return getWrongIds(MOCK_WRONG_KEY).filter((id) => Object.prototype.hasOwnProperty.call(byIdMock, id));
+  }
+  function mockBookmarkIds() {
+    return getBookmarks(MOCK_BOOKMARK_KEY).filter((id) => Object.prototype.hasOwnProperty.call(byIdMock, id));
   }
 
   // ---- multi-slot session persistence: one saved session per set ----
@@ -195,7 +215,38 @@
       list.appendChild(group);
     });
 
+    renderRealExamCard();
     renderResumeList();
+  }
+
+  function renderRealExamCard() {
+    document.getElementById("real-exam-count").textContent = `${MOCK_QUESTIONS.length}문제 · 과목 순서대로`;
+
+    const wrongIds = mockWrongIds();
+    const bookmarkIds = mockBookmarkIds();
+    const row = document.getElementById("real-exam-secondary");
+    row.innerHTML = "";
+    row.hidden = wrongIds.length === 0 && bookmarkIds.length === 0;
+
+    if (wrongIds.length > 0) {
+      const wrongBtn = document.createElement("button");
+      wrongBtn.className = "subject-secondary-btn";
+      wrongBtn.textContent = `오답 재도전 (${wrongIds.length})`;
+      wrongBtn.addEventListener("click", () => {
+        startOxSession("real-exam-wrong-retry", wrongIds.map((id) => byIdMock[id]), "실전 기출문제 · 오답 재도전");
+      });
+      row.appendChild(wrongBtn);
+    }
+
+    if (bookmarkIds.length > 0) {
+      const bookmarkBtn = document.createElement("button");
+      bookmarkBtn.className = "subject-secondary-btn";
+      bookmarkBtn.textContent = `⭐ 저장 (${bookmarkIds.length})`;
+      bookmarkBtn.addEventListener("click", () => {
+        startOxSession("real-exam-bookmarks", bookmarkIds.map((id) => byIdMock[id]), "실전 기출문제 · 저장한 문제");
+      });
+      row.appendChild(bookmarkBtn);
+    }
   }
 
   function renderResumeList() {
@@ -253,12 +304,14 @@
 
   // ==================== OX QUIZ ====================
 
-  function startOxSession(key, questions, label) {
+  function startOxSession(key, questions, label, options) {
+    const opts = options || {};
+    const ordered = opts.shuffle === false ? questions : shuffle(questions);
     session = {
       key,
       label,
       mode: "ox",
-      queueIds: shuffle(questions).map((q) => q.id),
+      queueIds: ordered.map((q) => q.id),
       index: 0,
       correct: 0,
       wrong: [],
@@ -269,7 +322,7 @@
   }
 
   function currentQuestion() {
-    return byId[session.queueIds[session.index]];
+    return byIdAll[session.queueIds[session.index]];
   }
 
   function renderQuestion() {
@@ -626,25 +679,43 @@
       breakdownEl.innerHTML = "";
     }
 
-    const topicCounts = {};
+    const conceptCounts = {};
     session.wrong.forEach((id) => {
-      const t = byId[id].topic;
-      topicCounts[t] = (topicCounts[t] || 0) + 1;
+      const label = conceptLabel(byIdAll[id]);
+      conceptCounts[label] = (conceptCounts[label] || 0) + 1;
     });
-    const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]);
+    const sortedConcepts = Object.entries(conceptCounts).sort((a, b) => b[1] - a[1]);
 
     const wrongHeading = document.getElementById("result-wrong-heading");
-    wrongHeading.hidden = sortedTopics.length === 0;
-    document.getElementById("result-wrong-topics").innerHTML =
-      sortedTopics.map(([t, n]) => `<span class="tag">${t} (${n})</span>`).join("");
+    wrongHeading.hidden = sortedConcepts.length === 0;
+    const tagsEl = document.getElementById("result-wrong-topics");
+    tagsEl.innerHTML = "";
+    sortedConcepts.forEach(([label, n]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tag";
+      btn.textContent = `${label} (${n})`;
+      btn.addEventListener("click", () => startConceptSession(label));
+      tagsEl.appendChild(btn);
+    });
 
     const retryBtn = document.getElementById("btn-retry-from-result");
     if (session.wrong.length > 0) {
       retryBtn.hidden = false;
-      retryBtn.onclick = () => startOxSession("wrong-retry", session.wrong.map((id) => byId[id]), "오답 재도전");
+      retryBtn.onclick = () => startOxSession("wrong-retry", session.wrong.map((id) => byIdAll[id]), "오답 재도전");
     } else {
       retryBtn.hidden = true;
     }
+  }
+
+  // 개념 태그(용어 또는 topic 폴백) 하나를 다루는 전체 문항(기존+실전 기출, 정답+오답)을 모아 새 세션을 시작한다.
+  function startConceptSession(label) {
+    const isTerm = CONCEPT_TERMS.includes(label);
+    const matches = isTerm
+      ? ALL_QUESTIONS.filter((q) => conceptTermsOf(q).includes(label))
+      : ALL_QUESTIONS.filter((q) => q.topic === label);
+    if (matches.length === 0) return;
+    startOxSession(`concept-${label}`, matches, `개념 · ${label}`);
   }
 
   // ==================== 이벤트 바인딩 ====================
@@ -682,6 +753,10 @@
   });
 
   document.getElementById("btn-mock-exam").addEventListener("click", startMockExam);
+
+  document.getElementById("btn-real-exam").addEventListener("click", () => {
+    startOxSession("real-exam", MOCK_QUESTIONS, "실전 기출문제", { shuffle: false });
+  });
 
   document.getElementById("btn-home").addEventListener("click", goHome);
 

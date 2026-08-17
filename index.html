@@ -26,6 +26,14 @@
         <span class="card-title">📝 투운사 모의고사</span>
         <span class="card-sub">5지선다 · 오답·저장 문제 반영</span>
       </button>
+
+      <div class="subject-group" id="real-exam-group">
+        <button id="btn-real-exam" class="card card-real-exam">
+          <span class="card-title">📄 실전 기출문제</span>
+          <span class="card-sub" id="real-exam-count"></span>
+        </button>
+        <div class="subject-secondary" id="real-exam-secondary" hidden></div>
+      </div>
     </section>
 
     <!-- 문제 화면 (OX) -->
@@ -95,6 +103,7 @@
   </main>
 
   <script src="questions.js"></script>
+  <script src="mock-questions.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
