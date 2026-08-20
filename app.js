@@ -5,6 +5,8 @@
   const BOOKMARK_KEY = "oxquiz-bookmarks";
   const MOCK_WRONG_KEY = "oxquiz-mock-wrong";
   const MOCK_BOOKMARK_KEY = "oxquiz-mock-bookmarks";
+  const EXAMSET_WRONG_KEY = "oxquiz-examset-wrong";
+  const EXAMSET_BOOKMARK_KEY = "oxquiz-examset-bookmarks";
   const SESSIONS_KEY = "oxquiz-sessions"; // { [setKey]: session }
   const SUBJECT_LABELS = {
     1: "1과목 · 금융상품 및 세제",
@@ -56,6 +58,11 @@
   const ALL_QUESTIONS = QUESTIONS.concat(MOCK_QUESTIONS);
   const byIdAll = Object.fromEntries(ALL_QUESTIONS.map((q) => [q.id, q]));
 
+  const ALL_EXAMSET_QUESTIONS = Object.values(EXAM_SETS).flatMap((bySubject) =>
+    Object.values(bySubject).flat()
+  );
+  const byIdExamSet = Object.fromEntries(ALL_EXAMSET_QUESTIONS.map((q) => [q.id, q]));
+
   const views = {
     home: document.getElementById("view-home"),
     quiz: document.getElementById("view-quiz"),
@@ -91,8 +98,16 @@
   }
 
   // 문항 id가 어느 풀 소속인지에 따라 오답/저장 기록을 쓸 storage key를 고른다.
-  function wrongKeyFor(id) { return byId[id] ? WRONG_KEY : MOCK_WRONG_KEY; }
-  function bookmarkKeyFor(id) { return byId[id] ? BOOKMARK_KEY : MOCK_BOOKMARK_KEY; }
+  function wrongKeyFor(id) {
+    if (byId[id]) return WRONG_KEY;
+    if (byIdExamSet[id]) return EXAMSET_WRONG_KEY;
+    return MOCK_WRONG_KEY;
+  }
+  function bookmarkKeyFor(id) {
+    if (byId[id]) return BOOKMARK_KEY;
+    if (byIdExamSet[id]) return EXAMSET_BOOKMARK_KEY;
+    return MOCK_BOOKMARK_KEY;
+  }
 
   function getWrongIds(key) { return readIds(key || WRONG_KEY); }
   function setWrongIds(ids, key) { writeIds(key || WRONG_KEY, ids); }
@@ -130,6 +145,12 @@
   }
   function mockBookmarkIds() {
     return getBookmarks(MOCK_BOOKMARK_KEY).filter((id) => Object.prototype.hasOwnProperty.call(byIdMock, id));
+  }
+  function examSetWrongIds() {
+    return getWrongIds(EXAMSET_WRONG_KEY).filter((id) => Object.prototype.hasOwnProperty.call(byIdExamSet, id));
+  }
+  function examSetBookmarkIds() {
+    return getBookmarks(EXAMSET_BOOKMARK_KEY).filter((id) => Object.prototype.hasOwnProperty.call(byIdExamSet, id));
   }
 
   // ---- multi-slot session persistence: one saved session per set ----
@@ -216,6 +237,7 @@
     });
 
     renderRealExamCard();
+    renderExamSetSection();
     renderResumeList();
   }
 
@@ -244,6 +266,75 @@
       bookmarkBtn.textContent = `⭐ 저장 (${bookmarkIds.length})`;
       bookmarkBtn.addEventListener("click", () => {
         startOxSession("real-exam-bookmarks", bookmarkIds.map((id) => byIdMock[id]), "실전 기출문제 · 저장한 문제");
+      });
+      row.appendChild(bookmarkBtn);
+    }
+  }
+
+  const EXAM_SET_ROUNDS = [39, 40, 41, 42, 43, 44];
+
+  function renderExamSetSection() {
+    const list = document.getElementById("exam-set-round-list");
+    list.innerHTML = "";
+
+    EXAM_SET_ROUNDS.forEach((round) => {
+      if (!EXAM_SETS[round]) return; // 아직 추출 안 된 회차는 건너뜀
+
+      const group = document.createElement("div");
+      group.className = "subject-group";
+
+      const roundBtn = document.createElement("button");
+      roundBtn.className = "card";
+      roundBtn.innerHTML = `<span class="card-title">${round}회 기출 모의고사</span><span class="card-sub">과목을 선택하세요</span>`;
+
+      const subjectRow = document.createElement("div");
+      subjectRow.className = "subject-secondary";
+      subjectRow.hidden = true;
+
+      [1, 2, 3].forEach((subject) => {
+        const questions = EXAM_SETS[round][subject] || [];
+        const btn = document.createElement("button");
+        btn.className = "subject-secondary-btn";
+        btn.textContent = `${SUBJECT_LABELS[subject].split(" · ")[0]} (${questions.length}문항)`;
+        btn.addEventListener("click", () => startExamSetSession(round, subject));
+        subjectRow.appendChild(btn);
+      });
+
+      roundBtn.addEventListener("click", () => {
+        subjectRow.hidden = !subjectRow.hidden;
+      });
+
+      group.appendChild(roundBtn);
+      group.appendChild(subjectRow);
+      list.appendChild(group);
+    });
+
+    renderExamSetSecondary();
+  }
+
+  function renderExamSetSecondary() {
+    const wrongIds = examSetWrongIds();
+    const bookmarkIds = examSetBookmarkIds();
+    const row = document.getElementById("exam-set-secondary");
+    row.innerHTML = "";
+    row.hidden = wrongIds.length === 0 && bookmarkIds.length === 0;
+
+    if (wrongIds.length > 0) {
+      const wrongBtn = document.createElement("button");
+      wrongBtn.className = "subject-secondary-btn";
+      wrongBtn.textContent = `오답 재도전 (${wrongIds.length})`;
+      wrongBtn.addEventListener("click", () => {
+        startExamSetRetrySession("examset-wrong-retry", "39~44회 · 오답 재도전", wrongIds);
+      });
+      row.appendChild(wrongBtn);
+    }
+
+    if (bookmarkIds.length > 0) {
+      const bookmarkBtn = document.createElement("button");
+      bookmarkBtn.className = "subject-secondary-btn";
+      bookmarkBtn.textContent = `⭐ 저장 (${bookmarkIds.length})`;
+      bookmarkBtn.addEventListener("click", () => {
+        startExamSetRetrySession("examset-bookmarks", "39~44회 · 저장한 문제", bookmarkIds);
       });
       row.appendChild(bookmarkBtn);
     }
@@ -577,11 +668,59 @@
     renderMockQuestion();
   }
 
+  function startExamSetSession(round, subject) {
+    const questions = EXAM_SETS[round][subject];
+    session = {
+      key: `examset-${round}-${subject}`,
+      label: `${round}회 · ${SUBJECT_LABELS[subject].split(" · ")[0]}`,
+      mode: "mcq",
+      pool: "examset",
+      items: questions.map((q) => ({
+        qid: q.id,
+        stem: q.stem,
+        choices: q.choices,
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+      })),
+      index: 0,
+      correct: 0,
+      wrong: [],
+    };
+    saveActiveSession();
+    showView("mock");
+    renderMockQuestion();
+  }
+
+  function startExamSetRetrySession(key, label, questionIds) {
+    const questions = questionIds.map((id) => byIdExamSet[id]);
+    session = {
+      key,
+      label,
+      mode: "mcq",
+      pool: "examset",
+      items: questions.map((q) => ({
+        qid: q.id,
+        stem: q.stem,
+        choices: q.choices,
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+      })),
+      index: 0,
+      correct: 0,
+      wrong: [],
+    };
+    saveActiveSession();
+    showView("mock");
+    renderMockQuestion();
+  }
+
   function currentMockItem() {
     return session.items[session.index];
   }
   function currentMockQuestion() {
-    return byId[currentMockItem().qid];
+    const item = currentMockItem();
+    if (session.pool === "examset") return byIdExamSet[item.qid];
+    return byId[item.qid];
   }
 
   function renderMockQuestion() {
@@ -636,10 +775,15 @@
     const banner = document.getElementById("mock-feedback-banner");
     banner.textContent = correct ? "정답이에요" : "오답이에요";
     banner.className = `feedback-banner ${correct ? "correct" : "wrong"}`;
-    const isBlank = item.stem.includes("( )");
-    const explanationText = isBlank
-      ? `정답: ${item.stem.replace("( )", item.choices[item.correctIndex])}`
-      : `정답: ${item.choices[item.correctIndex]}`;
+    let explanationText;
+    if (item.explanation) {
+      explanationText = `정답: ${item.choices[item.correctIndex]}\n${item.explanation}`;
+    } else {
+      const isBlank = item.stem.includes("( )");
+      explanationText = isBlank
+        ? `정답: ${item.stem.replace("( )", item.choices[item.correctIndex])}`
+        : `정답: ${item.choices[item.correctIndex]}`;
+    }
     document.getElementById("mock-feedback-explanation").textContent = explanationText;
     document.getElementById("mock-feedback").hidden = false;
   }
@@ -664,10 +808,11 @@
 
     const breakdownEl = document.getElementById("result-subject-breakdown");
     if (session.mode === "mcq") {
+      const lookup = session.pool === "examset" ? byIdExamSet : byId;
       const totalBySubject = { 1: 0, 2: 0, 3: 0 };
       const wrongBySubject = { 1: 0, 2: 0, 3: 0 };
-      session.items.forEach((item) => { totalBySubject[byId[item.qid].subject] += 1; });
-      session.wrong.forEach((id) => { wrongBySubject[byId[id].subject] += 1; });
+      session.items.forEach((item) => { totalBySubject[lookup[item.qid].subject] += 1; });
+      session.wrong.forEach((id) => { wrongBySubject[lookup[id].subject] += 1; });
       breakdownEl.hidden = false;
       breakdownEl.innerHTML = [1, 2, 3].map((s) => {
         const t = totalBySubject[s];
@@ -679,30 +824,39 @@
       breakdownEl.innerHTML = "";
     }
 
-    const conceptCounts = {};
-    session.wrong.forEach((id) => {
-      const label = conceptLabel(byIdAll[id]);
-      conceptCounts[label] = (conceptCounts[label] || 0) + 1;
-    });
-    const sortedConcepts = Object.entries(conceptCounts).sort((a, b) => b[1] - a[1]);
-
+    // 개념별 모아보기(CONCEPT_TERMS 매칭)는 기존 OX 문제은행(849+171문항) 전용이라
+    // 39~44회 기출 모의고사 세션(pool: "examset")에서는 건너뛴다.
     const wrongHeading = document.getElementById("result-wrong-heading");
-    wrongHeading.hidden = sortedConcepts.length === 0;
     const tagsEl = document.getElementById("result-wrong-topics");
-    tagsEl.innerHTML = "";
-    sortedConcepts.forEach(([label, n]) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "tag";
-      btn.textContent = `${label} (${n})`;
-      btn.addEventListener("click", () => startConceptSession(label));
-      tagsEl.appendChild(btn);
-    });
+    if (session.pool === "examset") {
+      wrongHeading.hidden = true;
+      tagsEl.innerHTML = "";
+    } else {
+      const conceptCounts = {};
+      session.wrong.forEach((id) => {
+        const label = conceptLabel(byIdAll[id]);
+        conceptCounts[label] = (conceptCounts[label] || 0) + 1;
+      });
+      const sortedConcepts = Object.entries(conceptCounts).sort((a, b) => b[1] - a[1]);
+
+      wrongHeading.hidden = sortedConcepts.length === 0;
+      tagsEl.innerHTML = "";
+      sortedConcepts.forEach(([label, n]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tag";
+        btn.textContent = `${label} (${n})`;
+        btn.addEventListener("click", () => startConceptSession(label));
+        tagsEl.appendChild(btn);
+      });
+    }
 
     const retryBtn = document.getElementById("btn-retry-from-result");
     if (session.wrong.length > 0) {
       retryBtn.hidden = false;
-      retryBtn.onclick = () => startOxSession("wrong-retry", session.wrong.map((id) => byIdAll[id]), "오답 재도전");
+      retryBtn.onclick = session.pool === "examset"
+        ? () => startExamSetRetrySession("examset-wrong-retry-from-result", "오답 재도전", session.wrong)
+        : () => startOxSession("wrong-retry", session.wrong.map((id) => byIdAll[id]), "오답 재도전");
     } else {
       retryBtn.hidden = true;
     }
